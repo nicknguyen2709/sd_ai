@@ -24,6 +24,8 @@ def has_mps() -> bool:
 
 
 def cuda_no_autocast(device_id=None) -> bool:
+    if not torch.cuda.is_available():
+        return False
     if device_id is None:
         device_id = get_cuda_device_id()
     return (
@@ -37,7 +39,7 @@ def get_cuda_device_id():
         int(shared.cmd_opts.device_id)
         if shared.cmd_opts.device_id is not None and shared.cmd_opts.device_id.isdigit()
         else 0
-    ) or torch.cuda.current_device()
+    ) or (torch.cuda.current_device() if torch.cuda.is_available() else 0)
 
 
 def get_cuda_device_string():
@@ -122,10 +124,23 @@ device_interrogate: torch.device = None
 device_gfpgan: torch.device = None
 device_esrgan: torch.device = None
 device_codeformer: torch.device = None
-dtype: torch.dtype = torch.float16
-dtype_vae: torch.dtype = torch.float16
-dtype_unet: torch.dtype = torch.float16
-dtype_inference: torch.dtype = torch.float16
+# Default dtypes: prefer float16 only if the runtime supports it (CUDA, MPS, XPU, or NPU).
+supports_fp16 = torch.cuda.is_available() or has_mps() or has_xpu() or npu_specific.has_npu
+if supports_fp16:
+    dtype: torch.dtype = torch.float16
+    dtype_vae: torch.dtype = torch.float16
+    dtype_unet: torch.dtype = torch.float16
+    dtype_inference: torch.dtype = torch.float16
+else:
+    dtype: torch.dtype = torch.float32
+    dtype_vae: torch.dtype = torch.float32
+    dtype_unet: torch.dtype = torch.float32
+    dtype_inference: torch.dtype = torch.float32
+    # When the runtime doesn't support fp16, enforce no-half globally to avoid mixed-precision casts
+    try:
+        shared.cmd_opts.no_half = True
+    except Exception:
+        pass
 unet_needs_upcast = False
 
 

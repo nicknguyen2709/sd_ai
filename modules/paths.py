@@ -18,6 +18,37 @@ def mute_sdxl_imports():
     module = Dummy()
     module.StableDataModuleFromConfig = None
     sys.modules['sgm.data'] = module
+    
+    # Redirect taming imports to vendored version in extensions-builtin/LDSR
+    ldsr_path = os.path.join(script_path, 'extensions-builtin/LDSR')
+    if os.path.exists(ldsr_path) and os.path.exists(os.path.join(ldsr_path, 'vqvae_quantize.py')):
+        sys.path.insert(0, ldsr_path)
+        try:
+            import vqvae_quantize
+            taming_modules = Dummy()
+            taming_modules.modules = Dummy()
+            taming_modules.modules.vqvae = Dummy()
+            taming_modules.modules.vqvae.quantize = vqvae_quantize
+            sys.modules['taming'] = taming_modules
+            sys.modules['taming.modules'] = taming_modules.modules
+            sys.modules['taming.modules.vqvae'] = taming_modules.modules.vqvae
+            sys.modules['taming.modules.vqvae.quantize'] = vqvae_quantize
+            sys.path.pop(0)
+        except ImportError as e:
+            sys.path.pop(0)
+            print(f"Warning: Could not load vendored taming module: {e}", file=sys.stderr)
+    
+    # Load ldm.modules.midas stub for depth model support
+    try:
+        sys.path.insert(0, script_path)
+        import ldm_midas_stub
+        # Register just the midas API module - ldm will be imported separately
+        # We register a placeholder that will be merged with the real ldm.modules when it loads
+        sys.modules['ldm_midas_stub'] = ldm_midas_stub
+        sys.path.pop(0)
+    except ImportError as e:
+        sys.path.pop(0)
+        print(f"Warning: Could not load midas stub module: {e}", file=sys.stderr)
 
 
 # data_path = cmd_opts_pre.data
@@ -62,3 +93,26 @@ for d, must_exist, what, options in path_dirs:
         else:
             sys.path.append(d)
         paths[what] = d
+
+
+# After adding LDM to sys.path, inject the midas stub into ldm.modules
+if 'Stable Diffusion' in paths:
+    try:
+        import ldm  # noqa: F401
+        import ldm.modules  # noqa: F401
+        import ldm_midas_stub  # noqa: F401
+        ldm.modules.midas = ldm_midas_stub
+        sys.modules['ldm.modules.midas'] = ldm_midas_stub
+        sys.modules['ldm.modules.midas.api'] = ldm_midas_stub.api
+    except Exception as e:
+        print(f"Warning: Could not inject midas into ldm.modules: {e}", file=sys.stderr)
+    
+    # Inject ldm.data.util stub for depth preprocessing
+    try:
+        import ldm.data  # noqa: F401
+        import ldm_data_util_stub  # noqa: F401
+        ldm.data.util = ldm_data_util_stub
+        sys.modules['ldm.data.util'] = ldm_data_util_stub
+    except Exception as e:
+        print(f"Warning: Could not inject data.util into ldm.data: {e}", file=sys.stderr)
+

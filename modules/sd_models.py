@@ -462,7 +462,11 @@ def load_model_weights(model, checkpoint_info: CheckpointInfo, state_dict, timer
         model.to(memory_format=torch.channels_last)
         timer.record("apply channels_last")
 
-    if shared.cmd_opts.no_half:
+    # Do not convert model to half precision when user requested no-half,
+    # or when the runtime does not support fp16 (no CUDA, no MPS, no XPU, no NPU).
+    if shared.cmd_opts.no_half or (
+        not torch.cuda.is_available() and not devices.has_mps() and not devices.has_xpu()
+    ):
         model.float()
         model.alphas_cumprod_original = model.alphas_cumprod
         devices.dtype_unet = torch.float32
@@ -484,6 +488,16 @@ def load_model_weights(model, checkpoint_info: CheckpointInfo, state_dict, timer
         model.half()
         model.alphas_cumprod = alphas_cumprod
         model.alphas_cumprod_original = alphas_cumprod
+        # Ensure biases match parameter dtypes to avoid mismatched input/bias dtypes on some backends
+        for module in model.modules():
+            if hasattr(module, 'weight') and getattr(module, 'weight') is not None:
+                if hasattr(module, 'bias') and getattr(module, 'bias') is not None:
+                    try:
+                        if module.bias.dtype != module.weight.dtype:
+                            module.bias.data = module.bias.data.to(module.weight.dtype)
+                    except Exception:
+                        # be conservative: ignore failures here and continue
+                        pass
         model.first_stage_model = vae
         if depth_model:
             model.depth_model = depth_model

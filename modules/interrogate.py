@@ -119,14 +119,17 @@ class InterrogateModels:
     def load(self):
         if self.blip_model is None:
             self.blip_model = self.load_blip_model()
-            if not shared.cmd_opts.no_half and not self.running_on_cpu:
+            # Only convert to half when fp16 is supported by the runtime
+            from modules import devices
+            if not shared.cmd_opts.no_half and not self.running_on_cpu and getattr(devices, 'supports_fp16', False):
                 self.blip_model = self.blip_model.half()
 
         self.blip_model = self.blip_model.to(devices.device_interrogate)
 
         if self.clip_model is None:
             self.clip_model, self.clip_preprocess = self.load_clip_model()
-            if not shared.cmd_opts.no_half and not self.running_on_cpu:
+            from modules import devices
+            if not shared.cmd_opts.no_half and not self.running_on_cpu and getattr(devices, 'supports_fp16', False):
                 self.clip_model = self.clip_model.half()
 
         self.clip_model = self.clip_model.to(devices.device_interrogate)

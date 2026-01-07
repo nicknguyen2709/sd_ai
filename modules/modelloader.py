@@ -181,12 +181,13 @@ def load_spandrel_model(
             f"Model {path!r} is not a {expected_architecture!r} model (got {arch.name!r})",
         )
     half = False
+    from modules import devices
     if prefer_half:
-        if model_descriptor.supports_half:
+        if model_descriptor.supports_half and getattr(devices, 'supports_fp16', False):
             model_descriptor.model.half()
             half = True
         else:
-            logger.info("Model %s does not support half precision, ignoring --half", path)
+            logger.info("Model %s does not support half precision or runtime lacks fp16 support, ignoring --half", path)
     if dtype:
         model_descriptor.model.to(dtype=dtype)
     model_descriptor.model.eval()

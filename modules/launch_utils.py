@@ -384,10 +384,9 @@ def prepare_environment():
     if args.use_ipex:
         args.skip_torch_cuda_test = True
     if not args.skip_torch_cuda_test and not check_run_python("import torch; assert torch.cuda.is_available()"):
-        raise RuntimeError(
-            'Torch is not able to use GPU; '
-            'add --skip-torch-cuda-test to COMMANDLINE_ARGS variable to disable this check'
-        )
+        print("Warning: torch.cuda is not available; continuing in CPU-only mode.\n"
+              "If you intended to use a GPU, re-run with a CUDA-enabled PyTorch build or add '--skip-torch-cuda-test' to COMMANDLINE_ARGS.")
+        args.skip_torch_cuda_test = True
     startup_timer.record("torch GPU test")
 
     if not is_installed("clip"):
